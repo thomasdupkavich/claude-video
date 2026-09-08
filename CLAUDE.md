@@ -20,13 +20,19 @@ this fork has diverged on purpose.
   `whisper-large-v3-turbo` ($0.04/hr vs $0.111/hr).
 - `frames.py` — `-vsync` → `-fps_mode`. ffmpeg 9 removed `-vsync`, which broke
   every frame mode and 21 of 71 tests upstream. Still broken on Brad's main.
+- `watch.py` — every report opens with `Result: complete | partial | failed`,
+  names which stream is missing and why, and exits 1 when nothing was captured.
+- `failures.py` — 17 classified download failures in plain English, each with
+  retry advice, a fix command where one exists, and whether the video still
+  exists at all. An unrecognized error says so instead of guessing, and the raw
+  yt-dlp text is always kept underneath.
 
 ## Config
 `~/.config/watch/.env` (0600): whisper.cpp binary + model paths, `GROQ_API_KEY`,
 `GROQ_WHISPER_MODEL`, `WATCH_DETAIL=balanced`, `SETUP_COMPLETE=true`.
 
 ## Before committing
-`python3 -m pytest -q` — 71 passed is the bar. Anything less is a regression.
+`python3 -m pytest -q` — 92 passed is the bar. Anything less is a regression.
 
 Removing the plugin also removed its SessionStart status line. That hook was
 silent once configured, so nothing of value was lost.
