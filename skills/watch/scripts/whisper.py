@@ -26,8 +26,14 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 
+from config import read_env_file
+
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions"
-GROQ_MODEL = "whisper-large-v3"
+GROQ_MODEL = (
+    os.environ.get("GROQ_WHISPER_MODEL")
+    or read_env_file().get("GROQ_WHISPER_MODEL")
+    or "whisper-large-v3-turbo"
+)
 
 OPENAI_ENDPOINT = "https://api.openai.com/v1/audio/transcriptions"
 OPENAI_MODEL = "whisper-1"

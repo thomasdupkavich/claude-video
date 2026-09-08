@@ -236,6 +236,29 @@ def main() -> int:
         except Exception as exc:
             print(f"[watch] subtitle parse failed: {exc}", file=sys.stderr)
 
+    # --- local whisper.cpp: tried before the cloud backends (patched in) ---
+    if (
+        not transcript_segments
+        and not args.no_whisper
+        and not args.whisper
+        and video_path
+        and meta.get("has_audio")
+    ):
+        try:
+            import local_whisper
+
+            if all(local_whisper.locate()):
+                all_segments, used_backend = local_whisper.transcribe_video(video_path, work)
+                transcript_segments = (
+                    filter_range(all_segments, start_sec, end_sec) if focused else all_segments
+                )
+                transcript_text = format_transcript(transcript_segments)
+                transcript_source = used_backend
+        except SystemExit as exc:
+            print(f"[watch] local whisper failed, falling back: {exc}", file=sys.stderr)
+        except Exception as exc:
+            print(f"[watch] local whisper error, falling back: {exc}", file=sys.stderr)
+
     if not transcript_segments and not args.no_whisper and video_path and meta.get("has_audio"):
         backend, api_key = load_api_key(args.whisper)
         if backend and api_key:
