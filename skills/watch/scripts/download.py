@@ -17,6 +17,20 @@ from urllib.parse import urlparse
 VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".flv", ".wmv"}
 
 
+class DownloadFailed(SystemExit):
+    """yt-dlp produced no file. Carries the raw stderr so the caller can say why.
+
+    Subclasses SystemExit so every existing caller that treats a failed download
+    as fatal keeps working unchanged; the added stderr is what lets a caller that
+    wants to explain the failure do so.
+    """
+
+    def __init__(self, stderr: str, returncode: int) -> None:
+        super().__init__(f"yt-dlp produced no video file (exit {returncode})")
+        self.stderr = stderr
+        self.returncode = returncode
+
+
 def is_url(source: str) -> bool:
     if source.startswith("-"):
         return False
@@ -144,12 +158,15 @@ def download_url(
 
     # yt-dlp may exit non-zero if a subtitle variant fails (e.g. 429) even when
     # the video itself downloaded fine. Treat "video file present" as success.
-    result = subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr)
+    #
+    # stderr is captured rather than streamed so a failure can be classified into
+    # a plain-English cause; it is echoed either way, so nothing is hidden.
+    result = subprocess.run(cmd, stdout=sys.stderr, stderr=subprocess.PIPE, text=True)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="")
     video = _pick_video(out_dir)
     if video is None:
-        raise SystemExit(
-            f"yt-dlp did not produce a video file in {out_dir} (exit {result.returncode})"
-        )
+        raise DownloadFailed(result.stderr or "", result.returncode)
 
     subtitle = _pick_subtitle(out_dir)
     info = _read_info(out_dir / "video.info.json", url)
