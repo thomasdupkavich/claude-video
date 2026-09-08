@@ -351,20 +351,23 @@ def main() -> int:
     # flag, name which stream is missing, why, and what would fix it -- a caller
     # should never have to infer degradation from an absence.
     #
-    # Frames are only "expected" when the mode asks for them; a transcript is
-    # always expected, because a video nobody could hear is a degraded result
-    # even when the user is the one who turned transcription off.
+    # Frames are only "expected" when the mode asks for them, and a transcript
+    # only when the source actually has audio -- a silent clip with no transcript
+    # is a complete answer, not a degraded one. Everything else that is expected
+    # and absent is named, and a run that was asked for something and returned
+    # nothing at all is a failure rather than an empty success.
     frames_expected = detail != "transcript" or bool(args.timestamps)
+    transcript_expected = bool(meta.get("has_audio", True))
     have_frames = bool(frames)
     have_transcript = bool(transcript_segments)
 
     missing: list[str] = []
     if frames_expected and not have_frames:
         missing.append("frames")
-    if not have_transcript:
+    if transcript_expected and not have_transcript:
         missing.append("transcript")
 
-    if not have_frames and not have_transcript:
+    if missing and not have_frames and not have_transcript:
         capture_status = "failed"
     elif missing:
         capture_status = "partial"
