@@ -227,6 +227,8 @@ def main() -> int:
     if cue_frames:
         frames = merge_frames(frames, cue_frames)
 
+    transcript_failure_reason = ""
+
     if not transcript_segments and dl.get("subtitle_path"):
         try:
             all_segments = parse_vtt(dl["subtitle_path"])
@@ -255,8 +257,10 @@ def main() -> int:
                 transcript_text = format_transcript(transcript_segments)
                 transcript_source = used_backend
         except SystemExit as exc:
+            transcript_failure_reason = f"Local whisper.cpp failed: {exc}"
             print(f"[watch] local whisper failed, falling back: {exc}", file=sys.stderr)
         except Exception as exc:
+            transcript_failure_reason = f"Local whisper.cpp errored: {exc}"
             print(f"[watch] local whisper error, falling back: {exc}", file=sys.stderr)
 
     if not transcript_segments and not args.no_whisper and video_path and meta.get("has_audio"):
@@ -273,6 +277,7 @@ def main() -> int:
                 transcript_text = format_transcript(transcript_segments)
                 transcript_source = f"whisper ({used_backend})"
             except SystemExit as exc:
+                transcript_failure_reason = f"Whisper ({backend}) failed: {exc}"
                 print(f"[watch] whisper fallback failed: {exc}", file=sys.stderr)
         else:
             hint = (
@@ -281,11 +286,13 @@ def main() -> int:
                 "no subtitles and no Whisper API key found"
             )
             setup_py = SCRIPT_DIR / "setup.py"
+            transcript_failure_reason = f"{hint[0].upper()}{hint[1:]}."
             print(
                 f"[watch] {hint} — run `python3 {setup_py}` to enable the Whisper fallback",
                 file=sys.stderr,
             )
     elif not transcript_segments and video_path and not meta.get("has_audio"):
+        transcript_failure_reason = "The source has no audio stream, so there is nothing to transcribe."
         print("[watch] no audio stream found — proceeding without transcription", file=sys.stderr)
 
     info = dl.get("info") or {}
@@ -338,6 +345,63 @@ def main() -> int:
         )
     else:
         print("- **Transcript:** none available")
+
+    # --- Capture result: complete / partial / failed ---------------------
+    # A run that obtained nothing must not read as success. Beyond a pass/fail
+    # flag, name which stream is missing, why, and what would fix it -- a caller
+    # should never have to infer degradation from an absence.
+    #
+    # Frames are only "expected" when the mode asks for them; a transcript is
+    # always expected, because a video nobody could hear is a degraded result
+    # even when the user is the one who turned transcription off.
+    frames_expected = detail != "transcript" or bool(args.timestamps)
+    have_frames = bool(frames)
+    have_transcript = bool(transcript_segments)
+
+    missing: list[str] = []
+    if frames_expected and not have_frames:
+        missing.append("frames")
+    if not have_transcript:
+        missing.append("transcript")
+
+    if not have_frames and not have_transcript:
+        capture_status = "failed"
+    elif missing:
+        capture_status = "partial"
+    else:
+        capture_status = "complete"
+
+    if args.no_whisper and not have_transcript and not transcript_failure_reason:
+        transcript_failure_reason = (
+            "No captions were available and `--no-whisper` disabled transcription."
+        )
+
+    print(f"- **Result:** {capture_status}", end="")
+    if missing:
+        print(f" — no {' and no '.join(missing)}")
+    else:
+        print()
+
+    if capture_status != "complete":
+        print()
+        if "transcript" in missing:
+            print(
+                f"> **No transcript.** {transcript_failure_reason or 'Captions were unavailable and transcription did not run.'} "
+                "Nothing below reflects what was said — do not describe spoken content "
+                "from frames alone."
+            )
+        if "frames" in missing:
+            print(
+                "> **No frames.** Nothing visual was captured, so any question about what was "
+                "shown is unanswerable from this run. Re-run with `--detail balanced`."
+            )
+        if capture_status == "failed":
+            print()
+            print(
+                "> **This capture obtained nothing** — not one frame and not one transcript "
+                "line. Treat it as a failed run, not an empty video. Answering from the title "
+                "or the URL would be a guess."
+            )
 
     if detail == "token-burner" and len(frames) > 250:
         print()
@@ -409,7 +473,9 @@ def main() -> int:
     print("---")
     print(f"_Work dir: `{work}` — delete when done._")
 
-    return 0
+    # Exit non-zero when nothing was captured, so a caller that only checks the
+    # status code cannot mistake an empty capture for a successful one.
+    return 1 if capture_status == "failed" else 0
 
 
 if __name__ == "__main__":
