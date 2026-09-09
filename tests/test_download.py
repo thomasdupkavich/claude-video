@@ -62,3 +62,27 @@ def test_download_url_requests_english_only(monkeypatch, tmp_path):
     with pytest.raises(SystemExit):
         download.download_url(URL, tmp_path / "download")
     _assert_english_only(_sub_langs(calls[0]))
+
+
+def test_english_request_excludes_auto_translated_tail():
+    """The old "en.*" also matched YouTube's machine-translated tracks -- en-ja,
+    en-es, en-en-US-<hash> -- so a popular video meant 11 subtitle requests to
+    use 1. The burst is what earns a 429, and a 429 mid-fetch is what used to
+    cost the whole capture."""
+    langs = download.SUB_LANGS_ENGLISH.split(",")
+    assert len(langs) <= 4, f"too many tracks requested up front: {langs}"
+    assert all(l in {"en", "en-US", "en-GB", "en-orig"} for l in langs), langs
+    assert "*" not in download.SUB_LANGS_ENGLISH
+
+
+def test_translated_fallback_is_still_available():
+    """A video with no real English track should still get a transcript."""
+    assert download.SUB_LANGS_TRANSLATED == "en.*"
+
+
+def test_fetch_captions_retries_once_for_a_translated_track(monkeypatch, tmp_path):
+    """No English found -> exactly one retry with the wider list, never a loop."""
+    calls = _capture_argv(monkeypatch)
+    download.fetch_captions(URL, tmp_path / "download")
+    requested = [_sub_langs(c) for c in calls]
+    assert requested == [download.SUB_LANGS_ENGLISH, download.SUB_LANGS_TRANSLATED], requested

@@ -20,6 +20,20 @@ from media import run as run_cmd
 VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".flv", ".wmv"}
 
 
+# Real English tracks, named exactly. The wildcard "en.*" that used to be here
+# also matches YouTube's auto-translated tail -- en-ja, en-es, en-en-US-<hash>
+# and friends -- so a popular video meant 11 subtitle requests to use 1. That is
+# slow, and the burst is what provokes the 429 that then fails the whole fetch.
+#
+# These four cover every real English track in practice; typically one or two
+# exist. Anything genuinely foreign falls back to the wildcard below.
+SUB_LANGS_ENGLISH = "en,en-US,en-GB,en-orig"
+
+# Only reached when a video has no real English track at all: take a machine
+# translation rather than no transcript.
+SUB_LANGS_TRANSLATED = "en.*"
+
+
 class DownloadFailed(SystemExit):
     """yt-dlp produced no file. Carries the raw stderr so the caller can say why.
 
@@ -79,7 +93,7 @@ def _pick_video(out_dir: Path) -> Path | None:
     return None
 
 
-def fetch_captions(url: str, out_dir: Path) -> dict:
+def fetch_captions(url: str, out_dir: Path, sub_langs: str = SUB_LANGS_ENGLISH) -> dict:
     """Fetch metadata and best available VTT captions without downloading video."""
     if shutil.which("yt-dlp") is None:
         raise SystemExit("yt-dlp is not installed. Install with: brew install yt-dlp")
@@ -92,7 +106,7 @@ def fetch_captions(url: str, out_dir: Path) -> dict:
         "--write-info-json",
         "--write-subs",
         "--write-auto-subs",
-        "--sub-langs", "en.*",
+        "--sub-langs", sub_langs,
         "--sub-format", "vtt",
         "--convert-subs", "vtt",
         "--no-playlist",
@@ -103,6 +117,13 @@ def fetch_captions(url: str, out_dir: Path) -> dict:
     ]
     run_cmd(cmd, stdout=sys.stderr, stderr=sys.stderr)
     subtitle = _pick_subtitle(out_dir)
+
+    # No real English track: retry once for a machine translation rather than
+    # returning no transcript at all.
+    if subtitle is None and sub_langs == SUB_LANGS_ENGLISH:
+        print("[watch] no English captions — retrying for a translated track", file=sys.stderr)
+        return fetch_captions(url, out_dir, sub_langs=SUB_LANGS_TRANSLATED)
+
     info = _read_info(out_dir / "video.info.json", url)
     return {
         "video_path": None,
@@ -169,6 +190,7 @@ def download_url(
     out_dir: Path,
     audio_only: bool = False,
     max_height: int = 480,
+    sub_langs: str = SUB_LANGS_ENGLISH,
 ) -> dict:
     if shutil.which("yt-dlp") is None:
         raise SystemExit("yt-dlp is not installed. Install with: brew install yt-dlp")
@@ -186,7 +208,7 @@ def download_url(
         "--write-info-json",
         "--write-subs",
         "--write-auto-subs",
-        "--sub-langs", "en.*",
+        "--sub-langs", sub_langs,
         "--sub-format", "vtt",
         "--convert-subs", "vtt",
         "--no-playlist",

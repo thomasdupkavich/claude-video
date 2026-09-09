@@ -37,6 +37,11 @@ this fork has diverged on purpose.
   ~100 surviving timestamps are then decoded out of the real file, in parallel.
   Measured on Big Buck Bunny (10 min, hard cuts) at 768px: 10.4s -> 4.8s, 132
   cuts found vs 130. Falls back to the single-pass engine if the proxy fails.
+- `download.py` — asks for real English captions by name
+  (`en,en-US,en-GB,en-orig`) instead of the wildcard `en.*`, which also matched
+  YouTube's machine-translated tail and meant 11 subtitle requests to use 1.
+  Measured on one video: 11 files -> 2. Falls back to the wildcard once when no
+  English track exists, so a foreign-language video still gets a transcript.
 - `failures.py` — 17 classified download failures in plain English, each with
   retry advice, a fix command where one exists, and whether the video still
   exists at all. An unrecognized error says so instead of guessing, and the raw
@@ -47,7 +52,7 @@ this fork has diverged on purpose.
 `GROQ_WHISPER_MODEL`, `WATCH_DETAIL=balanced`, `SETUP_COMPLETE=true`.
 
 ## Before committing
-`python3 -m pytest -q` — 92 passed is the bar. Anything less is a regression.
+`python3 -m pytest -q` — 95 passed is the bar. Anything less is a regression.
 
 Removing the plugin also removed its SessionStart status line. That hook was
 silent once configured, so nothing of value was lost.
