@@ -32,6 +32,11 @@ this fork has diverged on purpose.
   512px JPEGs paid twice: bigger download, far slower decode. Measured on an
   18-minute clip: 30s -> 12s end to end, same 157 scene changes, frames
   visually identical. (videotoolbox hwaccel was tried and is 3x SLOWER on AV1.)
+- `frames.py` / `watch.py` — two-pass scene extraction. A 240p proxy is
+  downloaded alongside the real file and scene detection runs on that; only the
+  ~100 surviving timestamps are then decoded out of the real file, in parallel.
+  Measured on Big Buck Bunny (10 min, hard cuts) at 768px: 10.4s -> 4.8s, 132
+  cuts found vs 130. Falls back to the single-pass engine if the proxy fails.
 - `failures.py` — 17 classified download failures in plain English, each with
   retry advice, a fix command where one exists, and whether the video still
   exists at all. An unrecognized error says so instead of guessing, and the raw

@@ -236,3 +236,31 @@ if __name__ == "__main__":
         raise SystemExit(2)
     result = download(sys.argv[1], Path(sys.argv[2]))
     print(json.dumps(result, indent=2))
+
+
+def download_proxy(url: str, out_dir: Path, height: int = 240) -> Path | None:
+    """A tiny copy used only to locate scene changes.
+
+    Never shown to anyone -- it exists so the expensive decode can be replaced
+    by a cheap one. Returns None on any failure; the caller falls back to
+    single-pass extraction rather than losing the run over an optimisation.
+    """
+    if shutil.which("yt-dlp") is None:
+        return None
+    out_dir.mkdir(parents=True, exist_ok=True)
+    template = str(out_dir / "proxy.%(ext)s")
+    result = run_cmd(
+        [
+            "yt-dlp", "-q", "--no-warnings",
+            "-f", f"bv*[height<={height}][vcodec^=avc1]/bv*[height<={height}]/worstvideo",
+            "--no-playlist", "--no-cache-dir",
+            "-o", template, "--", url,
+        ],
+        capture_output=True, text=True, timeout=300,
+    )
+    if result.returncode != 0:
+        return None
+    for candidate in sorted(out_dir.glob("proxy.*")):
+        if candidate.suffix.lower() in VIDEO_EXTS:
+            return candidate
+    return None

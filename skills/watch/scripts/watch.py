@@ -20,9 +20,9 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from config import frame_cap, get_config  # noqa: E402
-from download import DownloadFailed, download, fetch_captions, is_url, source_height_for  # noqa: E402
+from download import DownloadFailed, download, download_proxy, fetch_captions, is_url, source_height_for  # noqa: E402
 from failures import classify  # noqa: E402
-from frames import MAX_FPS, auto_fps, auto_fps_focus, extract_at_timestamps, extract_keyframes, extract_scene_or_uniform, format_time, get_metadata, merge_frames, parse_time, parse_timestamps  # noqa: E402
+from frames import SCENE_MIN_FRAMES, _even_indices, dedupe_perceptual, detect_scene_times, extract_at_times, MAX_FPS, auto_fps, auto_fps_focus, extract_at_timestamps, extract_keyframes, extract_scene_or_uniform, format_time, get_metadata, merge_frames, parse_time, parse_timestamps  # noqa: E402
 from transcribe import filter_range, format_transcript, parse_vtt  # noqa: E402
 from whisper import load_api_key, transcribe_video  # noqa: E402
 
@@ -268,6 +268,39 @@ def main() -> int:
                 end_seconds=end_sec,
                 dedup=not args.no_dedup,
             )
+        if proxy_path:
+            # Two-pass: locate the cuts on the proxy, then decode only those
+            # moments out of the real file.
+            try:
+                times = detect_scene_times(
+                    str(proxy_path),
+                    start_seconds=start_sec,
+                    end_seconds=end_sec,
+                )
+                if len(times) >= SCENE_MIN_FRAMES:
+                    picked = (
+                        [times[i] for i in _even_indices(len(times), detail_budget)]
+                        if detail_budget else times
+                    )
+                    found = extract_at_times(
+                        video_path,
+                        work / "frames",
+                        picked,
+                        resolution=args.resolution,
+                    )
+                    kept, dropped = (
+                        dedupe_perceptual(found) if not args.no_dedup else (found, 0)
+                    )
+                    return kept, {
+                        "engine": "scene (proxy)",
+                        "candidate_count": len(times),
+                        "deduped_count": dropped,
+                        "selected_count": len(kept),
+                        "fallback": False,
+                    }
+            except SystemExit as exc:
+                print(f"[watch] proxy detection failed, using full pass: {exc}", file=sys.stderr)
+
         return extract_scene_or_uniform(  # balanced, token-burner
             video_path,
             work / "frames",
@@ -279,6 +312,15 @@ def main() -> int:
             end_seconds=end_sec,
             dedup=not args.no_dedup,
         )
+
+    # A 240p proxy downloads in about a second and answers "where does the shot
+    # change?" just as well as the real file, so scene detection runs on it
+    # instead. Started before the frame worker so it is usually already on disk.
+    proxy_path = None
+    if url_source and video_path and detail in ("balanced", "token-burner") and detail_budget != 0:
+        proxy_path = download_proxy(args.source, work / "download")
+        if proxy_path:
+            print(f"[watch] scene detection will use a {proxy_path.name} proxy", file=sys.stderr)
 
     # Kick frames off now; the transcript work below runs while ffmpeg decodes.
     _frames_pool = ThreadPoolExecutor(max_workers=1)

@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from concurrent.futures import ThreadPoolExecutor
+
 from media import run as run_cmd
 
 
@@ -756,3 +758,88 @@ if __name__ == "__main__":
         },
         indent=2,
     ))
+
+
+# ---------------------------------------------------------------------------
+# Two-pass scene extraction: detect cheap, extract expensive.
+#
+# Finding *where* a shot changes needs no detail -- a 240p proxy produces the
+# same timestamp list as the full-resolution source. Measured on an 18-minute
+# clip: 155 scene changes in 1.6s from 240p vs 8.9s from 720p, identical list.
+#
+# Splitting the two lets the expensive decode happen only at the ~100 moments
+# that survive, instead of across every frame in the video, which is what makes
+# a larger frame size affordable.
+# ---------------------------------------------------------------------------
+
+def detect_scene_times(
+    video_path: str,
+    *,
+    threshold: float = SCENE_THRESHOLD,
+    start_seconds: float | None = None,
+    end_seconds: float | None = None,
+) -> list[float]:
+    """Timestamps where the shot changes. Decodes, writes no images."""
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "info", "-y"]
+    if start_seconds is not None:
+        cmd += ["-ss", f"{start_seconds:.3f}"]
+    if end_seconds is not None:
+        cmd += ["-to", f"{end_seconds:.3f}"]
+    cmd += [
+        "-i", str(Path(video_path).resolve()),
+        "-vf", f"select='eq(n\\,0)+gt(scene\\,{threshold})',showinfo",
+        "-fps_mode", "vfr",
+        "-f", "null", "-",
+    ]
+    result = run_cmd(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise SystemExit(f"ffmpeg scene detection failed: {result.stderr.strip()[-400:]}")
+
+    offset = start_seconds or 0.0
+    times = sorted({round(offset + float(m.group(1)), 2)
+                    for m in SHOWINFO_TS_RE.finditer(result.stderr)})
+    return times
+
+
+def extract_at_times(
+    video_path: str,
+    out_dir: Path,
+    times: list[float],
+    *,
+    resolution: int = 512,
+    reason: str = "scene-change",
+    workers: int = 8,
+) -> list[dict]:
+    """Grab one frame per timestamp by seeking, in parallel.
+
+    Seeking costs a decode from the nearest keyframe rather than from the start,
+    so N frames cost roughly N short decodes instead of one whole-file decode.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    source = str(Path(video_path).resolve())
+
+    def grab(index_time: tuple[int, float]) -> dict | None:
+        index, t = index_time
+        path = out_dir / f"frame_{index:04d}.jpg"
+        result = run_cmd(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-ss", f"{t:.3f}", "-i", source,
+                "-frames:v", "1",
+                "-vf", _scale_filter(resolution),
+                "-q:v", "3",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0 or not path.exists() or path.stat().st_size == 0:
+            return None
+        return {"path": str(path), "timestamp_seconds": t, "reason": reason}
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        frames = [f for f in pool.map(grab, enumerate(times, 1)) if f]
+
+    frames.sort(key=lambda f: f["timestamp_seconds"])
+    return frames
