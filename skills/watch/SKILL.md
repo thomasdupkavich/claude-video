@@ -4,9 +4,9 @@ version: "0.2.0"
 description: Watch a video (URL or local path). Downloads with yt-dlp, extracts auto-scaled frames with ffmpeg, pulls the transcript from captions (or Whisper API fallback), and hands the result to Claude so it can answer questions about what's in the video.
 argument-hint: "<video-url-or-path> [question]"
 allowed-tools: Bash, Read, AskUserQuestion
-homepage: https://github.com/bradautomates/claude-video
-repository: https://github.com/bradautomates/claude-video
-author: bradautomates
+homepage: https://github.com/thomasdupkavich/claude-video
+repository: https://github.com/thomasdupkavich/claude-video
+author: thomasdupkavich
 license: MIT
 user-invocable: true
 ---
@@ -20,7 +20,7 @@ You don't have a video input; this skill gives you one. A Python script gets cap
 Every `python3 ...` command below runs a bundled script under `SKILL_DIR/scripts/`. Set `SKILL_DIR` to the **absolute path of the directory containing THIS SKILL.md you just Read** — your harness told you that path in the Read result. The scripts are always a direct sibling of this file (`SKILL_DIR/scripts/watch.py`), in every install layout:
 
 ```
-Read ~/.claude/plugins/cache/claude-video/watch/<ver>/skills/watch/SKILL.md → SKILL_DIR=…/skills/watch
+Read ~/.claude/skills/watch/SKILL.md → SKILL_DIR=…/skills/watch
 Read ~/.codex/skills/watch/SKILL.md                                          → SKILL_DIR=~/.codex/skills/watch
 Read ~/.agents/skills/watch/SKILL.md                                         → SKILL_DIR=~/.agents/skills/watch
 ```
