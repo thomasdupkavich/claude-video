@@ -22,6 +22,11 @@ this fork has diverged on purpose.
   every frame mode and 21 of 71 tests upstream. Still broken on Brad's main.
 - `watch.py` — every report opens with `Result: complete | partial | failed`,
   names which stream is missing and why, and exits 1 when nothing was captured.
+- `media.py` — recovers the audio when yt-dlp returns an unmerged video-only
+  file, and puts a timeout on every subprocess so nothing hangs forever.
+- `watch.py` — refuses videos over `WATCH_MAX_SECONDS` (3h default) *before*
+  downloading; writes `manifest.json` so a long capture survives a client
+  timeout; extracts frames on a worker thread while transcription runs.
 - `failures.py` — 17 classified download failures in plain English, each with
   retry advice, a fix command where one exists, and whether the video still
   exists at all. An unrecognized error says so instead of guessing, and the raw
