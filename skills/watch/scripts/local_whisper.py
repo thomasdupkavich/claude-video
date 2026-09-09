@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 from config import read_env_file
+from media import resolve_audio_source, run as run_cmd
 from transcribe import parse_vtt
 
 
@@ -43,13 +44,17 @@ def locate() -> tuple[str, str] | tuple[None, None]:
 def extract_wav(video_path: str, out_path: Path) -> Path:
     """whisper.cpp wants 16 kHz mono PCM; give it exactly that."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    # The picked file can be the video-only half of an unmerged download; the
+    # sound is then in a sibling. Extracting from the wrong one fails with a
+    # message that names the symptom, not the cause.
+    source = resolve_audio_source(video_path, out_path.parent.parent)
     cmd = [
-        "ffmpeg", "-y", "-i", video_path,
+        "ffmpeg", "-y", "-i", str(source),
         "-vn", "-ac", "1", "-ar", "16000",
         "-c:a", "pcm_s16le",
         str(out_path),
     ]
-    result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    result = run_cmd(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     if result.returncode != 0 or not out_path.exists():
         raise SystemExit(
             f"ffmpeg could not extract audio for local whisper: "
@@ -84,7 +89,7 @@ def transcribe_video(video_path: str, work_dir: Path) -> tuple[list[dict], str]:
         "-pp",              # progress to stderr so a long run isn't silent
         "-t", str(max(1, (os.cpu_count() or 4) - 2)),
     ]
-    result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=sys.stderr)
+    result = run_cmd(cmd, stdout=subprocess.DEVNULL, stderr=sys.stderr)
 
     vtt = prefix.with_suffix(".vtt")
     if result.returncode != 0 or not vtt.exists():

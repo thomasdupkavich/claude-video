@@ -7,11 +7,14 @@ transcribe.py can parse them without needing Whisper.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
+
+from media import run as run_cmd
 
 
 VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".avi", ".flv", ".wmv"}
@@ -98,7 +101,7 @@ def fetch_captions(url: str, out_dir: Path) -> dict:
         "--",
         url,
     ]
-    subprocess.run(cmd, stdout=sys.stderr, stderr=sys.stderr)
+    run_cmd(cmd, stdout=sys.stderr, stderr=sys.stderr)
     subtitle = _pick_subtitle(out_dir)
     info = _read_info(out_dir / "video.info.json", url)
     return {
@@ -126,6 +129,11 @@ def _read_info(info_path: Path, url: str) -> dict:
     return info
 
 
+# A ceiling so a mis-typed link cannot quietly pull tens of gigabytes. Generous
+# enough that ordinary long-form video passes untouched.
+MAX_DOWNLOAD_BYTES = int(os.environ.get("WATCH_MAX_BYTES", str(2_000_000_000)))
+
+
 def download_url(
     url: str,
     out_dir: Path,
@@ -141,6 +149,7 @@ def download_url(
     cmd = [
         "yt-dlp",
         "-N", "8",
+        "--max-filesize", str(MAX_DOWNLOAD_BYTES),
         "-f", fmt,
         "--merge-output-format", "mp4",
         "--write-info-json",
@@ -161,7 +170,7 @@ def download_url(
     #
     # stderr is captured rather than streamed so a failure can be classified into
     # a plain-English cause; it is echoed either way, so nothing is hidden.
-    result = subprocess.run(cmd, stdout=sys.stderr, stderr=subprocess.PIPE, text=True)
+    result = run_cmd(cmd, stdout=sys.stderr, stderr=subprocess.PIPE, text=True)
     if result.stderr:
         print(result.stderr, file=sys.stderr, end="")
     video = _pick_video(out_dir)

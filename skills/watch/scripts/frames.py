@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from media import run as run_cmd
+
 
 MAX_FPS = 2.0
 SCENE_THRESHOLD = 0.20
@@ -87,7 +89,7 @@ def get_metadata(video_path: str) -> dict:
     if shutil.which("ffprobe") is None:
         raise SystemExit("ffprobe is not installed. Install with: brew install ffmpeg")
 
-    result = subprocess.run(
+    result = run_cmd(
         [
             "ffprobe",
             "-v", "quiet",
@@ -197,7 +199,7 @@ def extract(
         output_pattern,
     ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_cmd(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise SystemExit(f"ffmpeg frame extraction failed: {result.stderr.strip()}")
 
@@ -261,7 +263,7 @@ def extract_scene_candidates(
         "-q:v", "4",
         output_pattern,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_cmd(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise SystemExit(f"ffmpeg scene extraction failed: {result.stderr.strip()}")
 
@@ -371,7 +373,7 @@ def extract_at_timestamps(
             "-q:v", "4",
             str(path),
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = run_cmd(cmd, capture_output=True, text=True)
         if result.returncode == 0 and path.exists():
             out.append({
                 "index": len(out),
@@ -449,7 +451,7 @@ def _thumb_frames(paths: list[Path]) -> list[bytes]:
         "-f", "rawvideo",
         "-",
     ]
-    result = subprocess.run(cmd, capture_output=True)
+    result = run_cmd(cmd, capture_output=True)
     if result.returncode != 0:
         return []
 
@@ -616,7 +618,7 @@ def extract_keyframes(
         "-q:v", "4",
         output_pattern,
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = run_cmd(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise SystemExit(f"ffmpeg keyframe extraction failed: {result.stderr.strip()}")
 

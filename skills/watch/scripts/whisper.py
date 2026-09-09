@@ -27,6 +27,7 @@ from urllib.request import Request, urlopen
 
 
 from config import read_env_file
+from media import resolve_audio_source, run as run_cmd
 
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions"
 GROQ_MODEL = (
@@ -124,6 +125,7 @@ def extract_audio(video_path: str, out_path: Path) -> Path:
         raise SystemExit("ffmpeg is not installed. Install with: brew install ffmpeg")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    video_path = str(resolve_audio_source(video_path, out_path.parent))
     cmd = [
         "ffmpeg",
         "-hide_banner",

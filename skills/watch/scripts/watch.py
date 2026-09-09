@@ -7,8 +7,12 @@ then Reads each frame path to see the video.
 from __future__ import annotations
 
 import argparse
+import datetime as _dt
+import json
+import os
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -31,6 +35,8 @@ def main() -> int:
     ap.add_argument("source", help="Video URL or local file path")
     ap.add_argument("--max-frames", type=int, default=None, help="Override frame cap")
     ap.add_argument("--resolution", type=int, default=512, help="Frame width in pixels (default 512)")
+    ap.add_argument("--max-duration", type=int, default=None,
+                    help="Refuse videos longer than this many seconds (default 10800 = 3h; 0 disables)")
     ap.add_argument("--fps", type=float, default=None, help="Override auto-fps")
     ap.add_argument(
         "--detail",
@@ -109,6 +115,31 @@ def main() -> int:
 
     # --timestamps needs the video for frame grabs, so it overrides the
     # transcript-mode download skip (and forces a full, not audio-only, fetch).
+    # --- Size guard -------------------------------------------------------
+    # The metadata fetch above already knows the duration, so a very long video
+    # can be refused before any bytes move rather than after a silent 20-minute
+    # download. Stopping and naming the override is the closest a non-interactive
+    # tool gets to asking.
+    max_duration = args.max_duration
+    if max_duration is None:
+        max_duration = int(os.environ.get("WATCH_MAX_SECONDS", "10800"))
+    known_duration = float((dl.get("info") or {}).get("duration") or 0)
+    if max_duration and known_duration > max_duration:
+        hours = known_duration / 3600
+        print(f"# watch: refused `{args.source}`")
+        print()
+        print(f"- **Result:** refused — too long")
+        print()
+        print(
+            f"> **This video is {hours:.1f} hours long** "
+            f"({int(known_duration)}s), over the {max_duration}s ceiling.\n>\n"
+            f"> Downloading and transcribing it would take a while and use real disk. "
+            f"Nothing has been downloaded yet.\n>\n"
+            f"> To go ahead: `--max-duration 0` to remove the limit, or "
+            f"`--start HH:MM:SS --end HH:MM:SS` to capture just the part you need."
+        )
+        return 2
+
     audio_only = detail == "transcript" and not cue_timestamps
     if detail == "transcript" and transcript_segments and not cue_timestamps:
         video_path = None
@@ -208,7 +239,17 @@ def main() -> int:
             )
 
     detail_budget = max_frames if max_frames is None else max(0, max_frames - len(cue_frames))
-    if detail != "transcript" and video_path and detail_budget != 0:
+
+    def _extract_detail_frames():
+        """Frame extraction, isolated so it can run alongside transcription.
+
+        Both stages are subprocess-bound (ffmpeg and whisper.cpp) and write to
+        different directories, so overlapping them costs nothing and removes the
+        shorter of the two from the wall clock.
+        """
+        if detail == "transcript" or not video_path or detail_budget == 0:
+            return [], {}
+
         cap_label = "unlimited" if detail_budget is None else str(detail_budget)
         engine_label = "keyframes" if detail == "efficient" else "scene-aware frames"
         print(
@@ -217,7 +258,7 @@ def main() -> int:
             file=sys.stderr,
         )
         if detail == "efficient":
-            frames, frame_meta = extract_keyframes(
+            return extract_keyframes(
                 video_path,
                 work / "frames",
                 resolution=args.resolution,
@@ -226,21 +267,21 @@ def main() -> int:
                 end_seconds=end_sec,
                 dedup=not args.no_dedup,
             )
-        else:  # balanced, token-burner
-            frames, frame_meta = extract_scene_or_uniform(
-                video_path,
-                work / "frames",
-                fps=fps,
-                target_frames=target,
-                resolution=args.resolution,
-                max_frames=detail_budget,
-                start_seconds=start_sec,
-                end_seconds=end_sec,
-                dedup=not args.no_dedup,
-            )
+        return extract_scene_or_uniform(  # balanced, token-burner
+            video_path,
+            work / "frames",
+            fps=fps,
+            target_frames=target,
+            resolution=args.resolution,
+            max_frames=detail_budget,
+            start_seconds=start_sec,
+            end_seconds=end_sec,
+            dedup=not args.no_dedup,
+        )
 
-    if cue_frames:
-        frames = merge_frames(frames, cue_frames)
+    # Kick frames off now; the transcript work below runs while ffmpeg decodes.
+    _frames_pool = ThreadPoolExecutor(max_workers=1)
+    _frames_future = _frames_pool.submit(_extract_detail_frames)
 
     transcript_failure_reason = ""
 
@@ -309,6 +350,15 @@ def main() -> int:
     elif not transcript_segments and video_path and not meta.get("has_audio"):
         transcript_failure_reason = "The source has no audio stream, so there is nothing to transcribe."
         print("[watch] no audio stream found — proceeding without transcription", file=sys.stderr)
+
+    # Transcription is done; collect the frames that were decoding alongside it.
+    try:
+        frames, frame_meta = _frames_future.result()
+    finally:
+        _frames_pool.shutdown(wait=True)
+
+    if cue_frames:
+        frames = merge_frames(frames, cue_frames)
 
     info = dl.get("info") or {}
 
@@ -487,9 +537,42 @@ def main() -> int:
             f"Run `python3 {setup_py}` to enable Whisper, then re-run._"
         )
 
+    # --- Durable record ---------------------------------------------------
+    # Written before the report ends, so a client that times out on a long
+    # capture has not lost the work: the transcript and the frame list are on
+    # disk and can be read back from the work dir.
+    try:
+        manifest = {
+            "source": args.source,
+            "title": info.get("title"),
+            "uploader": info.get("uploader"),
+            "captured_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+            "duration_seconds": full_duration,
+            "detail": detail,
+            "result": capture_status,
+            "missing": missing,
+            "transcript_source": transcript_source,
+            "transcript_segments": transcript_segments,
+            "transcript_text": transcript_text,
+            "frames": frames,
+            "work_dir": str(work),
+        }
+        (work / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, default=str), encoding="utf-8"
+        )
+        wrote_manifest = True
+    except OSError as exc:
+        wrote_manifest = False
+        print(f"[watch] could not write manifest: {exc}", file=sys.stderr)
+
     print()
     print("---")
     print(f"_Work dir: `{work}` — delete when done._")
+    if wrote_manifest:
+        print(
+            f"_Full record saved to `{work / 'manifest.json'}` — transcript and frame list "
+            "survive here if this session is interrupted._"
+        )
 
     # Exit non-zero when nothing was captured, so a caller that only checks the
     # status code cannot mistake an empty capture for a successful one.
