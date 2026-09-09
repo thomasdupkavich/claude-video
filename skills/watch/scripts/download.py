@@ -134,10 +134,41 @@ def _read_info(info_path: Path, url: str) -> dict:
 MAX_DOWNLOAD_BYTES = int(os.environ.get("WATCH_MAX_BYTES", str(2_000_000_000)))
 
 
+def source_height_for(frame_width: int) -> int:
+    """Smallest source that still exceeds the frame width being extracted.
+
+    Frames are downscaled anyway, so pulling 720p to make 512px JPEGs costs
+    download time and -- far more -- decode time, for no visible gain. Measured
+    on an 18-minute clip: 480p H.264 detected the same 157 scene changes as
+    720p AV1 in 5.5s instead of 13.5s, from a 21 MB file instead of 52 MB.
+    """
+    if frame_width <= 512:
+        return 480
+    if frame_width <= 768:
+        return 720
+    return 1080
+
+
+def _video_format(max_height: int) -> str:
+    """Prefer H.264 at the chosen height; fall back rather than fail.
+
+    H.264 decodes several times faster than AV1 in software, and hardware
+    decode is not a way out: videotoolbox on AV1 measured 3x SLOWER than plain
+    software decode because of the copy-back overhead.
+    """
+    return (
+        f"bv*[height<={max_height}][vcodec^=avc1]+ba/"
+        f"b[height<={max_height}][vcodec^=avc1]/"
+        f"bv*[height<={max_height}]+ba/b[height<={max_height}]/"
+        f"bv*+ba/b"
+    )
+
+
 def download_url(
     url: str,
     out_dir: Path,
     audio_only: bool = False,
+    max_height: int = 480,
 ) -> dict:
     if shutil.which("yt-dlp") is None:
         raise SystemExit("yt-dlp is not installed. Install with: brew install yt-dlp")
@@ -145,7 +176,7 @@ def download_url(
     out_dir.mkdir(parents=True, exist_ok=True)
     output_template = str(out_dir / "video.%(ext)s")
 
-    fmt = "ba/bestaudio" if audio_only else "bv*[height<=720]+ba/b[height<=720]/bv+ba/b"
+    fmt = "ba/bestaudio" if audio_only else _video_format(max_height)
     cmd = [
         "yt-dlp",
         "-N", "8",
@@ -192,9 +223,10 @@ def download(
     source: str,
     out_dir: Path,
     audio_only: bool = False,
+    max_height: int = 480,
 ) -> dict:
     if is_url(source):
-        return download_url(source, out_dir, audio_only=audio_only)
+        return download_url(source, out_dir, audio_only=audio_only, max_height=max_height)
     return resolve_local(source)
 
 

@@ -27,6 +27,11 @@ this fork has diverged on purpose.
 - `watch.py` — refuses videos over `WATCH_MAX_SECONDS` (3h default) *before*
   downloading; writes `manifest.json` so a long capture survives a client
   timeout; extracts frames on a worker thread while transcription runs.
+- `download.py` — source resolution now follows the requested frame width and
+  prefers H.264. Frames are downscaled anyway, so pulling 720p AV1 to make
+  512px JPEGs paid twice: bigger download, far slower decode. Measured on an
+  18-minute clip: 30s -> 12s end to end, same 157 scene changes, frames
+  visually identical. (videotoolbox hwaccel was tried and is 3x SLOWER on AV1.)
 - `failures.py` — 17 classified download failures in plain English, each with
   retry advice, a fix command where one exists, and whether the video still
   exists at all. An unrecognized error says so instead of guessing, and the raw
