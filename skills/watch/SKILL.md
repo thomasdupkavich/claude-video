@@ -190,6 +190,39 @@ If the user asked a specific question, answer it directly citing timestamps. If 
 
 This holds for `transcript` detail too: even with no frames, produce a **summary** like the other modes — do not paste the full transcript into chat. Synthesize structure, key moments, and spoken content with timestamps; quote only the lines that matter. Offer the raw transcript only if the user explicitly asks for it.
 
+**Step 4b — offer the frames worth seeing.** The user never sees any frame you
+read; they only get your description of it. So when a frame carries something
+that genuinely beats being described — a chart, a diagram, a number or line of
+code on screen, a before/after, a moment that is funny or striking — surface it
+instead of paraphrasing it.
+
+Rules, in order:
+
+1. **Only when it earns it.** Most videos need nothing here. A talking head, a
+   vlog, a podcast — describe it and move on. Offer frames when the *visual* is
+   the information, not decoration.
+2. **Pick a handful, never a pile.** Three to five at most, chosen deliberately.
+   The whole point is that the user asked for short and sweet; sending twenty
+   frames recreates the problem.
+3. **Ask, in one line, at the end of the answer.** "Three frames worth seeing —
+   his cost breakdown at 6:45, the lease doc at 3:08, and the sponsor email at
+   14:00. Want them?" Name what each one shows, so the offer is decidable
+   without opening anything. Do not send first and ask after.
+4. **Send with `SendUserFile`** once they say yes, `display: "render"`, with a
+   one-line caption naming the timestamp and what it shows. If they name only
+   some, send only those.
+5. **Skip the question entirely when they already asked to see something.**
+   "show me the chart", "what does the screen say at 2:30" — that is a yes.
+   Send it with the answer.
+
+If a frame at 512px is too coarse to read what matters, re-run that moment at
+higher fidelity before offering it, rather than sending something illegible:
+
+```bash
+python3 "${SKILL_DIR}/scripts/watch.py" "<local file in the work dir>" \
+  --timestamps 6:45 --detail transcript --resolution 1024
+```
+
 **Step 5 — clean up.** The script prints a working directory at the end. If the user isn't going to ask follow-ups about this video, delete it with `rm -rf <dir>`. If they might, leave it in place.
 
 ## Detail and frames

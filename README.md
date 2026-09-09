@@ -33,6 +33,14 @@ bill, and the audio never leaves the Mac.
 
 Steps 3 and 4 run at the same time.
 
+## Showing you the frames
+
+You never see the frames Claude reads — only its description of them. So when a
+frame carries something worth looking at (a chart, a number on screen, a
+before/after), Claude names three to five of them in one line and offers to send
+them, rather than paraphrasing or dumping the lot. Ask to see something directly
+and it skips the question.
+
 ## Detail modes
 
 | Mode | Frames | Engine |
