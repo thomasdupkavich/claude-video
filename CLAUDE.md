@@ -1,8 +1,14 @@
-# claude-video — Thomas's fork
+@AGENTS.md
+
+# claude-video — Thomas's fork (overrides AGENTS.md above)
 
 Fork of `bradautomates/claude-video` (the `/watch` skill). This is the LIVE copy:
 `~/.claude/skills/watch` is a symlink into `skills/watch/`, so editing a file
 here changes `/watch` immediately. No install step, no cache copy, no sync.
+
+AGENTS.md is upstream's file, left unedited so cherry-picks stay clean. Its structure and
+path rules apply; ignore its plugin-install row, `dev-sync.sh`, and the `hooks/` SessionStart
+hook — none of those are used here.
 
 ## Remotes
 - `origin` → `thomasdupkavich/claude-video` (the fork — push here)
@@ -52,7 +58,7 @@ this fork has diverged on purpose.
 `GROQ_WHISPER_MODEL`, `WATCH_DETAIL=balanced`, `SETUP_COMPLETE=true`.
 
 ## Before committing
-`python3 -m pytest -q` — 95 passed is the bar. Anything less is a regression.
+`python3 -m pytest -q` — every test must pass; a lower pass count than the last commit is a regression.
 
 Removing the plugin also removed its SessionStart status line. That hook was
 silent once configured, so nothing of value was lost.
