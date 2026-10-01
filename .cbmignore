@@ -1,0 +1,23 @@
+# BEGIN managed codebase-memory generated-file exclusions
+.build/
+.cache/
+.claude/
+.claude-worktrees/
+.codex/
+.next/
+.venv/
+.worktrees/
+DerivedData/
+SourcePackages/
+__pycache__/
+acceptance-fixture/
+build/
+dist/
+logs/
+node_modules/
+target/
+vendor/
+venv/
+.codebase-memory/
+backups/
+# END managed codebase-memory generated-file exclusions
