@@ -1,7 +1,7 @@
 ---
 name: watch
 version: "0.2.0"
-description: Watch a video (URL or local path). Downloads with yt-dlp, extracts auto-scaled frames with ffmpeg, pulls the transcript from captions (or Whisper API fallback), and hands the result to Claude so it can answer questions about what's in the video.
+description: Watch a video (URL or local path). Downloads with yt-dlp, extracts auto-scaled frames with ffmpeg, pulls the transcript from captions (or Whisper API fallback), and hands the result to the agent (Claude Code, Codex or Hermes) so it can answer questions about what's in the video.
 argument-hint: "<video-url-or-path> [question]"
 allowed-tools: Bash, Read, AskUserQuestion
 homepage: https://github.com/thomasdupkavich/claude-video
@@ -35,6 +35,17 @@ if [ ! -f "$SKILL_DIR/scripts/watch.py" ]; then
   exit 1
 fi
 ```
+
+### Other agents (Codex, Hermes)
+
+This is the single shared copy: `~/.claude/skills/watch`, `~/.codex/skills/watch` and (via the
+`~/AI/Resources/skills-shared-hermes` link folder) Hermes all resolve to this folder, so set `SKILL_DIR`
+to the path you Read and let it resolve through the symlink. Claude-only tool names below map as
+follows. **Hermes / Codex:** where this file says `AskUserQuestion`, ask the same question in chat and
+wait for the answer; where it says `SendUserFile`, attach or send the image with the agent's own
+file/image attachment mechanism. `allowed-tools`
+in the frontmatter is Claude Code only. Local-first transcription (whisper.cpp, Groq only as a paid
+backup) is configured in `~/.config/watch/.env` and is shared by all agents.
 
 ## Step 0 — Setup preflight (runs every `/watch` invocation, silent on success)
 
