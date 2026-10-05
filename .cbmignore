@@ -20,4 +20,5 @@ vendor/
 venv/
 .codebase-memory/
 backups/
+.build*/
 # END managed codebase-memory generated-file exclusions
